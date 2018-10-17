@@ -10,7 +10,7 @@ const host = false;
 const SINGLE_COMMANDS_AND_NO_VARS = true;
 
 // Time out for the REST protocol. Increase it if the graphDB is slow. In milliseconds
-const REST_TIMEOUT = 300000 
+const REST_TIMEOUT = 86400000 
 // TODO: configuration for the secure server
 
 
