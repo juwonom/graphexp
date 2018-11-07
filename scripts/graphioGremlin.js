@@ -86,7 +86,6 @@ var graphioGremlin = (function(){
 	}
 
 
-
 	function search_query() {
 		// Preprocess query
 		let input_string = $('#search_value').val();
@@ -128,8 +127,8 @@ var graphioGremlin = (function(){
 		}
 
 		let gremlin_query_edges = "edges = " + traversal_source + ".V(nodes).aggregate('node').outE().as('edge').inV().where(within('node')).select('edge').toList();";
-                let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V()"+has_str+".aggregate('node').outE().as('edge').inV().where(within('node')).select('edge').toList();";
-                //let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V()"+has_str+".bothE();";
+		let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V()"+has_str+".aggregate('node').outE().as('edge').inV().where(within('node')).select('edge').toList();";
+		//let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V()"+has_str+".bothE();";
 		let gremlin_query = gremlin_query_nodes + gremlin_query_edges + "[nodes,edges]";
 		console.log(gremlin_query);
 
@@ -144,21 +143,141 @@ var graphioGremlin = (function(){
 			var nodeQuery = create_single_command(gremlin_query_nodes);
 			console.log("Node query: "+nodeQuery);
 
-			// var edgeQuery = create_single_command(gremlin_query_edges_no_vars);
-			// console.log("Edge query: "+edgeQuery);
+			var edgeQuery = create_single_command(gremlin_query_edges_no_vars);
+			console.log("Edge query: "+edgeQuery);
 
 			send_to_server(nodeQuery, null, null, null, function(nodeData){
-				// send_to_server(edgeQuery, null, null, null, function(edgeData){
-				// 	var combinedData = [nodeData,edgeData];
-				// 	handle_server_answer(combinedData, 'search', null, message);
-				// });
-
-				handle_server_answer([nodeData], 'search', null, message);
+				send_to_server(edgeQuery, null, null, null, function(edgeData){
+					var combinedData = [nodeData,edgeData];
+					handle_server_answer(combinedData, 'search', null, message);
+				});
 			});
 		} else {
 			send_to_server(gremlin_query,'search',null,message);
 		}
 	}
+
+	function default_search_neptune() {
+		// while busy, show we're doing something in the messageArea.
+		$('#messageArea').html('<h3>(loading)</h3>');
+
+		var message = "";
+		let combinedData = []
+		let ajaxCtr = 1;
+
+		let handQuery = traversal_source + ".V().hasLabel('handhistory').limit(20).toList()";
+		send_to_server(handQuery, null, null, null, function(handData){
+			combinedData.push(handData)
+			--ajaxCtr
+
+			let handValues = handData['@value']
+			if (handValues.length == 0) {
+				handle_server_answer(combinedData, 'search', null, message);							
+			}
+
+			Object.entries(handValues).forEach(([idx, obj]) => {
+				if (obj['@type'] === 'g:Vertex') {
+					let nodeId = obj['@value']['id']
+					let resultQuery = traversal_source + ".V('"+nodeId+"').outE().limit(10).toList()";
+					++ajaxCtr
+					send_to_server(resultQuery, null, null, null, function(resultData){
+						combinedData.push(resultData)
+						--ajaxCtr
+
+						let resultValues = resultData['@value']
+
+						Object.entries(resultValues).forEach(([childIdx, childObj]) => {
+							if (childObj['@type'] === 'g:Edge') {
+								let toNodeId = childObj['@value']['inV']
+								let playerQuery = traversal_source + ".V('"+toNodeId+"').limit(20).toList()";
+								++ajaxCtr
+								send_to_server(playerQuery, null, null, null, function(playerData){
+									combinedData.push(playerData)
+									--ajaxCtr
+									if (ajaxCtr <= 0) {
+										handle_server_answer(combinedData, 'search', null, message);							
+									}			
+								})
+							}
+						});
+
+						if (ajaxCtr <= 0) {
+							handle_server_answer(combinedData, 'search', null, message);							
+						}
+					});
+				}
+			});
+		});
+	}
+
+	function search_query_neptune() {
+		// Preprocess query
+		let input_string = $('#search_value').val();
+		let input_field = $('#search_field').val();
+		let label_field = $('#label_field').val();
+		let limit_field = $('#limit_field').val();
+		let search_type = $('#search_type').val();
+		//console.log(input_field)
+		var filtered_string = input_string;//You may add .replace(/\W+/g, ''); to refuse any character not in the alphabet
+		if (filtered_string.length>50) filtered_string = filtered_string.substring(0,50); // limit string length
+		// Translate to Gremlin query
+		let has_str = "";
+		if (label_field !== "") {
+			has_str = ".hasLabel('" + label_field + "')";
+		}
+		if (input_field !== "" && input_string !== "") {
+			has_str += ".has('" + input_field + "',";
+			switch (search_type) {
+				case "eq":
+					if (isInt(input_string)){
+						has_str += filtered_string + ")"
+					} else {
+						has_str += "'" + filtered_string + "')"
+					}
+					break;
+				case "contains":
+					has_str += "textContains('" + filtered_string + "'))";
+					break;
+			}
+		} else if (limit_field === "" || limit_field < 0) {
+				limit_field = node_limit_per_request;
+		}
+
+		let gremlin_query_nodes = "nodes = " + traversal_source + ".V()" + has_str;
+		if (limit_field !== "" && isInt(limit_field) && limit_field > 0) {
+			gremlin_query_nodes += ".limit(" + limit_field + ").toList();";
+		} else {
+			gremlin_query_nodes += ".toList();";
+		}
+
+		// while busy, show we're doing something in the messageArea.
+		$('#messageArea').html('<h3>(loading)</h3>');
+
+		var message = "";
+		var nodeQuery = create_single_command(gremlin_query_nodes);
+		console.log("Node query: "+nodeQuery);
+
+		send_to_server(nodeQuery, null, null, null, function(nodeData){
+			let combinedData = [nodeData]
+			let values = nodeData['@value']
+			Object.entries(values).forEach(([idx, obj]) => {
+				if (obj['@type'] === 'g:Vertex') {
+					let edgeId = obj['@value']['id'];
+					let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V('"+edgeId+"')"+has_str+".outE().as('edge').inV().select('edge').toList();";
+					//let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V('"+edgeId+"')"+has_str+".bothE();";
+	
+					var edgeQuery = create_single_command(gremlin_query_edges_no_vars);
+					console.log("Edge query: "+edgeQuery);
+
+					send_to_server(edgeQuery, null, null, null, function(edgeData){
+						combinedData.push(edgeData)
+					});
+				}
+			});
+
+			handle_server_answer(combinedData, 'search', null, message);
+		});
+	}	
 
 	function isInt(value) {
 	  return !isNaN(value) &&
@@ -174,8 +293,8 @@ var graphioGremlin = (function(){
 		if(isNaN(id)){ // Add quotes if id is a string (not a number).
 			id = '"'+id+'"';
 		}
-		var gremlin_query_nodes = 'nodes = ' + traversal_source + '.V('+id+').as("node").both('+(edge_filter?'"'+edge_filter+'"':'')+').as("node").select(all,"node").inject(' + traversal_source + '.V('+id+')).unfold()'
-		var gremlin_query_edges = "edges = " + traversal_source + ".V("+id+").bothE("+(edge_filter?"'"+edge_filter+"'":"")+")";
+		var gremlin_query_nodes = 'nodes = ' + traversal_source + '.V("'+id+'").as("node").both('+(edge_filter?'"'+edge_filter+'"':'')+').as("node").select(all,"node").inject(' + traversal_source + '.V("'+id+'")).unfold()'
+		var gremlin_query_edges = "edges = " + traversal_source + ".V('"+id+"').bothE("+(edge_filter?"'"+edge_filter+"'":"")+")";
 		var gremlin_query = gremlin_query_nodes+'\n'+gremlin_query_edges+'\n'+'[nodes.toList(),edges.toList()]'
 		// while busy, show we're doing something in the messageArea.
 		$('#messageArea').html('<h3>(loading)</h3>');
@@ -195,22 +314,20 @@ var graphioGremlin = (function(){
 	}
 
 	function send_to_server(gremlin_query,query_type,active_node,message, callback){
-
 		let server_address = $('#server_address').val();
 		let server_port = $('#server_port').val();
 		let COMMUNICATION_PROTOCOL = $('#server_protocol').val();
-			if (COMMUNICATION_PROTOCOL == 'REST'){
-				let server_url = "http://"+server_address+":"+server_port;
-				run_ajax_request(gremlin_query,server_url,query_type,active_node,message,callback);
-			}
-			else if (COMMUNICATION_PROTOCOL == 'websocket'){
-				let server_url = "ws://"+server_address+":"+server_port+"/gremlin"
-				run_websocket_request(gremlin_query,server_url,query_type,active_node,message,callback);
-			}
-			else {
-				console.log('Bad communication protocol. Check configuration file. Accept "REST" or "websocket" .')
-			}
-				
+		if (COMMUNICATION_PROTOCOL == 'REST'){
+			let server_url = "http://"+server_address+":"+server_port;
+			run_ajax_request(gremlin_query,server_url,query_type,active_node,message,callback);
+		}
+		else if (COMMUNICATION_PROTOCOL == 'websocket'){
+			let server_url = "ws://"+server_address+":"+server_port+"/gremlin"
+			run_websocket_request(gremlin_query,server_url,query_type,active_node,message,callback);
+		}
+		else {
+			console.log('Bad communication protocol. Check configuration file. Accept "REST" or "websocket" .')
+		}			
 	}
 
 	/////////////////////////////////////////////////////////////////////////////////////////////////
@@ -553,7 +670,9 @@ function get_vertex_prop_in_list(vertexProperty){
 		get_node_properties : get_node_properties,
 		get_edge_properties : get_edge_properties,
 		get_graph_info : get_graph_info,
+		default_search_neptune: default_search_neptune,
 		search_query : search_query,
+		search_query_neptune: search_query_neptune,
 		click_query : click_query,
 		send_to_server : send_to_server
 	}
