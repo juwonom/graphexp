@@ -279,8 +279,8 @@ var graphioGremlin = (function(){
 		if(isNaN(id)){ // Add quotes if id is a string (not a number).
 			id = '"'+id+'"';
 		}
-		var gremlin_query_nodes = 'nodes = ' + traversal_source + '.V("'+id+'").as("node").both('+(edge_filter?'"'+edge_filter+'"':'')+').as("node").select(all,"node").inject(' + traversal_source + '.V("'+id+'")).unfold()'
-		var gremlin_query_edges = "edges = " + traversal_source + ".V('"+id+"').bothE("+(edge_filter?"'"+edge_filter+"'":"")+")";
+		var gremlin_query_nodes = 'nodes = ' + traversal_source + '.V("'+id+'").as("node").both('+(edge_filter?'"'+edge_filter+'"':'')+').limit(10).as("node").select(all,"node").inject(' + traversal_source + '.V("'+id+'")).unfold()'
+		var gremlin_query_edges = "edges = " + traversal_source + ".V('"+id+"').bothE("+(edge_filter?"'"+edge_filter+"'":"")+").limit(10)";
 		var gremlin_query = gremlin_query_nodes+'\n'+gremlin_query_edges+'\n'+'[nodes.toList(),edges.toList()]'
 		// while busy, show we're doing something in the messageArea.
 		$('#messageArea').html('<h3>(loading)</h3>');
