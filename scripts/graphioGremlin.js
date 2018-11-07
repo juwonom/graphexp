@@ -260,20 +260,6 @@ var graphioGremlin = (function(){
 		send_to_server(nodeQuery, null, null, null, function(nodeData){
 			let combinedData = [nodeData]
 			let values = nodeData['@value']
-			Object.entries(values).forEach(([idx, obj]) => {
-				if (obj['@type'] === 'g:Vertex') {
-					let edgeId = obj['@value']['id'];
-					let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V('"+edgeId+"')"+has_str+".outE().as('edge').inV().select('edge').toList();";
-					//let gremlin_query_edges_no_vars = "edges = " + traversal_source + ".V('"+edgeId+"')"+has_str+".bothE();";
-	
-					var edgeQuery = create_single_command(gremlin_query_edges_no_vars);
-					console.log("Edge query: "+edgeQuery);
-
-					send_to_server(edgeQuery, null, null, null, function(edgeData){
-						combinedData.push(edgeData)
-					});
-				}
-			});
 
 			handle_server_answer(combinedData, 'search', null, message);
 		});
