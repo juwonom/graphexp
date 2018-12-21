@@ -165,7 +165,12 @@ var graphioGremlin = (function(){
 		let combinedData = []
 		let ajaxCtr = 1;
 
-		let handQuery = traversal_source + ".V().hasLabel('handhistory').limit(20).toList()";
+
+		let fromTimestamp = 1512086400000
+		let toTimestamp = 1512172800000
+		let handQuery = traversal_source + ".V().hasLabel('handhistory').and(has('starttime', gte('" + fromTimestamp + "')), has('starttime', lt('"+ toTimestamp +"'))).limit(20).toList()";
+		// let handQuery = traversal_source + ".V().hasLabel('handhistory').limit(20).toList()";
+
 		send_to_server(handQuery, null, null, null, function(handData){
 			combinedData.push(handData)
 			--ajaxCtr
